@@ -3,6 +3,7 @@ import datetime
 from sqlalchemy import Date, cast
 
 from pecan import abort, conf, expose, request
+from paddles.decorators import isolation_level, retry_commit
 from paddles.models import Job, Run, rollback, Session
 from paddles.controllers.jobs import JobsController
 from paddles.controllers.util import offset_query
@@ -65,6 +66,8 @@ class RunController(object):
         json_run['jobs'] = self.run.get_jobs()
         return json_run
 
+    @retry_commit
+    @isolation_level('SERIALIZABLE')
     @index.when(method='DELETE', template='json')
     def index_delete(self):
         if not self.run:
@@ -306,6 +309,8 @@ class RunsController(object):
     def index(self, fields='', count=conf.default_latest_runs_count, page=1):
         return latest_runs(fields=fields, count=count, page=page)
 
+    @retry_commit
+    @isolation_level('SERIALIZABLE')
     @index.when(method='POST', template='json')
     def index_post(self):
         # save to DB here
