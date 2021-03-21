@@ -4,6 +4,8 @@ from sqlalchemy import (Column, Integer, String, Boolean, ForeignKey, DateTime,
 from sqlalchemy.orm import backref, deferred, load_only, relationship
 from sqlalchemy.orm.exc import DetachedInstanceError, NoResultFound
 from pecan import conf
+from paddles.decorators import retry_commit
+from paddles.exceptions import InvalidRequestError
 from paddles.models import Base
 from paddles.models.nodes import Node
 from paddles.models.types import JSONType
@@ -112,6 +114,28 @@ class Job(Base):
         self.run = run
         self.posted = datetime.utcnow()
         self.set_or_update(json_data)
+
+    @classmethod
+    def create(cls, job_id, run, data):
+        try:
+            query = cls.query.options(load_only('id', 'job_id'))
+            query = query.filter_by(job_id=job_id, run=self.run)
+            if query.first():
+                raise InvalidRequestError(f'job with job_id {job_id} already exists')
+            log.info("Creating job: %s/%s", data.get('name', '<no name!>'),
+                     job_id)
+            cls(data, run)
+            commit()
+        except (sqlalchemy.exc.DBAPIError, sqlalchemy.exc.OperationalError, sqlalchemy.exc.InvalidRequestError):
+            rollback()
+            raise RaceConditionError('race creating job, please retry')
+        # try:
+        #     commit()
+        # except (sqlalchemy.exc.DBAPIError, sqlalchemy.exc.InvalidRequestError):
+        #     rollback()
+        #     raise RaceConditionError(
+        #         "error updating or creat. please retry request."
+        #     )
 
     def set_or_update(self, json_data):
         # Set self.updated, and more importantly, self.run.updated, to avoid

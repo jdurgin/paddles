@@ -29,6 +29,7 @@ class JobController(object):
             else:
                 self.run = None
 
+    def _load_job(self):
         query = Job.query.options(load_only('id', 'job_id', 'name', 'status'))
         query = query.filter_by(job_id=job_id, run=self.run)
         self.job = query.first()
@@ -125,15 +126,29 @@ class JobsController(object):
             error('/errors/invalid/', "could not find required key: 'job_id'")
         job_id = data['job_id'] = str(job_id)
 
-        query = Job.query.options(load_only('id', 'job_id'))
-        query = query.filter_by(job_id=job_id, run=self.run)
-        if query.first():
-            error('/errors/invalid/',
-                  "job with job_id %s already exists" % job_id)
-        else:
-            log.info("Creating job: %s/%s", data.get('name', '<no name!>'),
-                     job_id)
-            self.job = Job(data, self.run)
+        attempts = 10
+        while attempts > 0:
+            try:
+                Job.create(job_id, self.run, data)
+            except PaddlesError as exc:
+                error(exc.url, str(exc))
+                break
+            except RaceConditionError as exc:
+                log.warn("Job.create() detected race condition")
+                attempts -= 1
+                if attempts > 0:
+                    log.info("retrying after race avoidance (%s tries left)",
+                             attempts)
+                else:
+                    error(exc.url, str(exc))
+
+        # query = Job.query.options(load_only('id', 'job_id'))
+        # query = query.filter_by(job_id=job_id, run=self.run)
+        # if query.first():
+        # else:
+        #     log.info("Creating job: %s/%s", data.get('name', '<no name!>'),
+        #              job_id)
+        #     self.job = Job(data, self.run)
         return dict()
 
     @expose('json')
