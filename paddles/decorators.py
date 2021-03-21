@@ -20,30 +20,29 @@ def isolation_level(level=None):
         return f
     return deco
 
-def retry_commit(attempts=10):
+def retry_commit(f):
     """
     Retry a sqlalchemy transaction that fails due to a conflict in the db.
     """
-    def deco(f, *args, **kwargs):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            log.setLevel(logging.DEBUG)
-            log.addHandler(logging.FileHandler('/home/joshd/paddles/extra.log'))
-            log.info('decorating...')
-            while attempts > 0:
-                try:
-                    result = f(*args, **kwargs)
-                    commit()
-                    log.info('success!')
-                    return result
-                except (sqlalchemy.exc.DBAPIError, sqlalchemy.exc.OperationalError, sqlalchemy.exc.InvalidRequestError):
-                    rollback()
-                    attempts -= 1
-                    if attempts > 0:
-                        log.info('retrying transaction due to race')
-                    else:
-                        log.exception('failed to commit transaction after %d attempts', attempts)
-                        error('/errors/unavailable/',
-                              'error committing requset. please retry.')
-        return wrapper
-    return deco
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        log.setLevel(logging.DEBUG)
+        log.addHandler(logging.FileHandler('/home/joshd/paddles/extra.log'))
+        log.info('decorating...')
+        attempts = 10
+        while attempts > 0:
+            try:
+                result = f(*args, **kwargs)
+                commit()
+                log.info('success!')
+                return result
+            except (sqlalchemy.exc.DBAPIError, sqlalchemy.exc.OperationalError, sqlalchemy.exc.InvalidRequestError):
+                rollback()
+                attempts -= 1
+                if attempts > 0:
+                    log.info('retrying transaction due to race')
+                else:
+                    log.exception('failed to commit transaction after %d attempts', attempts)
+                    error('/errors/unavailable/',
+                          'error committing requset. please retry.')
+    return wrapper

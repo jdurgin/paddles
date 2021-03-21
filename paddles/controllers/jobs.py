@@ -4,8 +4,7 @@ from sqlalchemy.orm import load_only
 from pecan import expose, abort, request
 
 from paddles import models
-from paddles.decorators import isolation_level, retry_commit
-from paddles.models import Job, rollback, commit
+from paddles.models import Job, rollback
 from paddles.controllers import error
 
 log = logging.getLogger(__name__)
@@ -39,9 +38,7 @@ class JobController(object):
             abort(404)
         return self.job
 
-    @isolation_level('SERIALIZABLE')
     @index.when(method='PUT', template='json')
-    @retry_commit
     def index_post(self):
         """
         We update a job here, it should obviously exist already but most likely
@@ -59,9 +56,7 @@ class JobController(object):
                      self.job.job_id, old_job_status, self.job.status)
         return dict()
 
-    @isolation_level('SERIALIZABLE')
     @index.when(method='DELETE', template='json')
-    @retry_commit
     def index_delete(self):
         if not self.job:
             error('/errors/not_found/',
@@ -108,7 +103,6 @@ class JobsController(object):
         else:
             return jobs
 
-    @isolation_level('SERIALIZABLE')
     @index.when(method='POST', template='json')
     def index_post(self):
         """
@@ -125,6 +119,7 @@ class JobsController(object):
             error('/errors/invalid/', "could not find required key: 'job_id'")
         job_id = data['job_id'] = str(job_id)
 
+        log.info(f'trying to create job {job_id} with data {data}')
         query = Job.query.options(load_only('id', 'job_id'))
         query = query.filter_by(job_id=job_id, run=self.run)
         if query.first():

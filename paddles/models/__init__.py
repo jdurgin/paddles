@@ -43,7 +43,7 @@ class _EntityBase(object):
         return obj_slice
 
 
-Session = scoped_session(sessionmaker(autoflush=False))
+Session = scoped_session(sessionmaker())
 metadata = MetaData()
 Base = declarative_base(cls=_EntityBase)
 Base.query = Session.query_property()
